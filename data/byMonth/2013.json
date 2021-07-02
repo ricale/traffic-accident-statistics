@@ -1,0 +1,98 @@
+[
+  {
+    "month": 1,
+    "count": 16016,
+    "deaths": 389,
+    "serious": 7111,
+    "wounded": 16801,
+    "reported": 1182
+  },
+  {
+    "month": 2,
+    "count": 14187,
+    "deaths": 335,
+    "serious": 6266,
+    "wounded": 15010,
+    "reported": 979
+  },
+  {
+    "month": 3,
+    "count": 17465,
+    "deaths": 409,
+    "serious": 7810,
+    "wounded": 17342,
+    "reported": 1309
+  },
+  {
+    "month": 4,
+    "count": 18031,
+    "deaths": 380,
+    "serious": 8063,
+    "wounded": 18186,
+    "reported": 1546
+  },
+  {
+    "month": 5,
+    "count": 19686,
+    "deaths": 420,
+    "serious": 8861,
+    "wounded": 19198,
+    "reported": 1617
+  },
+  {
+    "month": 6,
+    "count": 18329,
+    "deaths": 436,
+    "serious": 8007,
+    "wounded": 18067,
+    "reported": 1599
+  },
+  {
+    "month": 7,
+    "count": 18441,
+    "deaths": 444,
+    "serious": 8144,
+    "wounded": 18735,
+    "reported": 1508
+  },
+  {
+    "month": 8,
+    "count": 18691,
+    "deaths": 412,
+    "serious": 8310,
+    "wounded": 19260,
+    "reported": 1620
+  },
+  {
+    "month": 9,
+    "count": 17806,
+    "deaths": 430,
+    "serious": 7741,
+    "wounded": 17666,
+    "reported": 1531
+  },
+  {
+    "month": 10,
+    "count": 19797,
+    "deaths": 499,
+    "serious": 8915,
+    "wounded": 18905,
+    "reported": 1687
+  },
+  {
+    "month": 11,
+    "count": 19396,
+    "deaths": 479,
+    "serious": 8508,
+    "wounded": 18926,
+    "reported": 1552
+  },
+  {
+    "month": 12,
+    "count": 17509,
+    "deaths": 459,
+    "serious": 7625,
+    "wounded": 17691,
+    "reported": 1433
+  }
+]

@@ -1,0 +1,8 @@
+export { default as d2012} from './2012.json'
+export { default as d2013} from './2013.json'
+export { default as d2014} from './2014.json'
+export { default as d2015} from './2015.json'
+export { default as d2016} from './2016.json'
+export { default as d2017} from './2017.json'
+export { default as d2018} from './2018.json'
+export { default as d2019} from './2019.json'
