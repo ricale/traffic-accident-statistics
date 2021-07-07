@@ -1,32 +1,37 @@
 import { useEffect } from 'react';
-import * as d3 from 'd3';
 
+import { ColumnChart } from 'components/chart';
 import * as data from 'data/byMonth';
 
 function ByMonthPage() {
   console.log('data', data.d2019)
   useEffect(() => {
-    const svg = d3.select('#svg')
-      .attr('viewBox', [0, 0, 500, 500].join(' '))
+    const series = data.d2019.reduce((acc, item) => {
+      // acc[0].data.push(item.count);
+      // const keys = ['deaths', 'serious', 'wounded', 'reported'];
+      // for(let i = 0; i < acc.length; i++) {
+      //   acc[i].data.push(item[]);
+      // }
+      acc[0].data.push(item.deaths);
+      acc[1].data.push(item.serious);
+      acc[2].data.push(item.wounded);
+      acc[3].data.push(item.reported);
+      return acc;
+    }, [
+      // {name: 'count', data: []},
+      {name: 'deaths', data: []},
+      {name: 'serious', data: []},
+      {name: 'wounded', data: []},
+      {name: 'reported', data: []},
+    ] as {name: string, data: number[]}[]);
 
-    const xScale = d3.scaleLinear()
-      .domain(d3.extent(data.d2019, dt => dt.month) as [number, number])
-      .range([100, 400])
+    const categories = data.d2019.map(item => `${item.month}`);
 
-    const yScale = d3.scaleLinear()
-      .domain(d3.extent(data.d2019, dt => dt.deaths) as [number, number])
-      .range([400, 100])
-
-    const xAxis = (g: d3.Selection<SVGGElement, unknown, HTMLElement, any>) => g
-      .attr('transform', `translate(0,${400})`)
-      .call(
-        d3.axisBottom(xScale)
-          .tickSizeOuter(0)
-      );
-    svg.append('g').call(xAxis)
-
-    // svg.append()
-
+    const chart = new ColumnChart(
+      '#svg',
+      series,
+      categories,
+    );
   }, []);
   return (
     <svg id='svg'></svg>
