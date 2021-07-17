@@ -25,7 +25,7 @@ function ByMonthPage() {
       {name: 'reported', data: []},
     ] as {name: string, data: number[]}[]);
 
-    const categories = data.d2019.map(item => `${item.month}`);
+    const categories = data.d2019.map(item => `${item.month}월`);
 
     const chart = new ColumnChart(
       '#svg',
