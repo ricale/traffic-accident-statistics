@@ -27,15 +27,13 @@ type Rect1 = {
 // }
 type Coord = [number, number]
 function isIn(rect: Rect1, [x,y]: Coord) {
-  console.log(rect.x, rect.x + rect.width, rect.y, rect.y + rect.height)
-  console.log(x, y)
   return (
     rect.x <= x && x <= (rect.x + rect.width) &&
     rect.y <= y && y <= (rect.y + rect.height)
   )
 }
 
-type dataByCategory = {
+type DataByCategory = {
   name: string
   value: number
 }[]
@@ -125,7 +123,7 @@ const BODY_BBOX = new Boundary(
 class ColumnChart {
   private _categories: string[]
   private _source: Serie[]
-  private _data: dataByCategory[]
+  private _data: DataByCategory[]
 
   private _d3: {
     svg: d3.Selection<d3.BaseType, unknown, HTMLElement, any>
@@ -133,9 +131,15 @@ class ColumnChart {
     yScale: d3.ScaleLinear<number, number, never>
     columns: d3Selection
     legend: d3Selection
+    tooltip: d3Selection
   }
 
   private _inactive: number[] = []
+  private _overed?: {
+    dx: number,
+    dy: number,
+    data: DataByCategory
+  }
 
   constructor(
     selector: string,
@@ -165,6 +169,7 @@ class ColumnChart {
     this.appendAxises();
     this.appendColumns();
     this.appendLegend();
+    this.appendTooltip();
 
     this.setEventListeners();
   }
@@ -177,7 +182,7 @@ class ColumnChart {
     this._d3.xScale = d3.scaleBand()
       .domain(this._categories)
       .range([BODY_BBOX.x1, BODY_BBOX.x2])
-      .padding(0.1)
+      .padding(0.05)
 
     const allData = this._source.reduce((acc, sr, i) => 
       this._inactive.includes(i) ? acc : [...acc, ...sr.data]
@@ -226,6 +231,22 @@ class ColumnChart {
     this.updateLegend();
   }
 
+  appendTooltip() {
+    this._d3.tooltip = this._d3.svg.append('g')
+      .classed('tooltip', true)
+      .call(g => {
+        g.append('rect')
+          .classed('wrapper', true);
+
+        g.append('g')
+          .classed('tooltipContent', true)
+          .call(g => {
+            g.append('text').classed('labels', true);
+            g.append('text').classed('values', true);
+          });
+      })
+  }
+
   updateAxises() {
     const xAxis = d3.axisBottom(this._d3.xScale)
       .tickSizeOuter(0)
@@ -252,11 +273,21 @@ class ColumnChart {
       .selectAll('g')
       .data(this._data)
       .join('g')
+        .selectAll('rect.columnArea')
+        .data([null])
+        .join('rect')
+          .classed('columnArea', true);
+
+    this._d3.columns
+      .selectAll('g')
+      .data(this._data)
+      .join('g')
         .attr('transform', (_, i) => `translate(${this._d3.xScale(this._categories[i])},0)`)
-        .selectAll('rect')
+        .selectAll('rect.columnRect')
         .data(dt => dt)
         .join(
           enter => enter.append('rect')
+            .classed('columnRect', true)
             .attr('fill', (dt) => colors[dt.name as keyof typeof colors])
             .attr('x', 0)
             .attr('y', 0)
@@ -288,6 +319,19 @@ class ColumnChart {
               .remove()
           )
         )
+
+    this._d3.columns
+      .selectAll('g')
+      .data(this._data)
+      .join('g')
+        .selectAll('rect.columnArea')
+        .data([null])
+        .join('rect')
+          .classed('columnArea', true)
+          .attr('transform', (_, i) => `translate(${0},${BODY_BBOX.y1})`)
+          .attr('width', this._d3.xScale.step())
+          .attr('height', BODY_BBOX.height)
+          .attr('fill', rgba(50,100,200,0))
   }
 
   updateLegend() {
@@ -346,6 +390,88 @@ class ColumnChart {
       .attr('transform', `translate(${coordX + LEGEND_ITEM_PADDING},${coordY + LEGEND_ITEM_PADDING})`)
   }
 
+  updateTooltip() {
+    if(!this._overed) {
+      this._d3.tooltip.style('display', 'none');
+      return;
+    }
+
+    this._d3.tooltip.style('display', null);
+
+    const {
+      dx,
+      dy,
+      data,
+    } = this._overed;
+
+    const activeData = data.filter((_,i) => !this._inactive.includes(i))
+
+    const tooltipContent = this._d3.tooltip.select('g.tooltipContent');
+    const tooltipRect = this._d3.tooltip.select('rect.wrapper');
+    const tooltipLabels = tooltipContent.select('text.labels');
+    const tooltipValues = tooltipContent.select('text.values');
+
+    const names = activeData.map(dt => dt.name) || [];
+    const values = activeData.map(dt => dt.value) || [];
+
+    tooltipLabels
+      .selectAll('tspan')
+      .data(names)
+      .join('tspan')
+        .attr('x', 0)
+        .attr('y', (_,i) => i * 10)
+        .attr('font-size', 10)
+        .text(d => d)
+
+    tooltipValues
+      .selectAll('tspan')
+      .data(values)
+      .join('tspan')
+        .attr('x', 0)
+        .attr('y', (_,i) => i * 10)
+        .attr('font-size', 10)
+        .attr('text-anchor', 'end')
+        .text(d => d)
+
+    const padding = 4;
+
+    const labelsBBox = (tooltipLabels.node() as SVGGraphicsElement).getBBox();
+    const valuesBBox = (tooltipValues.node() as SVGGraphicsElement).getBBox();
+
+    tooltipValues
+      .attr('transform', `translate(${labelsBBox.width + valuesBBox.width + padding}, 0)`);
+
+    const contentBBox = (tooltipContent.node() as SVGGraphicsElement).getBBox();
+
+    tooltipRect
+      .attr('width', contentBBox.width + padding * 2)
+      .attr('height', contentBBox.height + padding * 2)
+      .attr('stroke', '#000')
+      .attr('fill', rgba(255,255,255,0.9))
+      .attr('transform', `translate(${contentBBox.x - padding}, ${contentBBox.y - padding})`)
+
+    const containerBBox = (this._d3.tooltip.node() as SVGGraphicsElement).getBBox();
+
+    let x = dx;
+    if(x < BODY_BBOX.x1) {
+      x = BODY_BBOX.x1;
+    }
+    if(BODY_BBOX.x2 < x + contentBBox.width) {
+      x = BODY_BBOX.x2 - contentBBox.width;
+    }
+
+    let y = dy - contentBBox.height - 5;
+    if(y < BODY_BBOX.y1) {
+      y = BODY_BBOX.y1 + contentBBox.height + 30;
+    }
+    if(BODY_BBOX.y2 < y) {
+
+    }
+
+    this._d3.tooltip
+      .attr('transform', `translate(${x}, ${y})`)
+  }
+
   toggleSeries(index: number){
     if(this._inactive.includes(index)) {
       this._inactive.splice(
@@ -371,6 +497,27 @@ class ColumnChart {
         if(index) {
           _this.toggleSeries(+index);
         }
+      })
+
+    this._d3.columns
+      .on('mousemove', function(event) {
+        const group = d3.select(event.target.parentNode);
+        const [ dx, dy ] = d3.pointer(event);
+        group.selectAll('rect.columnRect').attr('stroke', '#000');
+
+        _this._overed = {
+          dx: dx,
+          dy: dy,
+          data: group.data()[0] as DataByCategory,
+        }
+        _this.updateTooltip();
+      })
+      .on('mouseout', function(event) {
+        const group = d3.select(event.target.parentNode);
+        group.selectAll('rect').attr('stroke', null);
+
+        _this._overed = undefined;
+        _this.updateTooltip();
       })
   }
 }
