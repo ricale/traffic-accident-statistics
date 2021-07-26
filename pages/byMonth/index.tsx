@@ -17,6 +17,7 @@ type Data = Omit<typeof data.d2012[0], 'month'> & {
 function ByMonthPage() {
   const [source, setSource] = useState<Data[]>([]);
   useEffect(() => {
+    console.log('>>> useEffect');
     const beginYear = 2012;
     const endYear = 2019;
 

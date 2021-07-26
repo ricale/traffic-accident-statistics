@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 
-import Boundary from './Boundary';
-import rgba from './rgba';
+import Boundary from '../Boundary';
+import rgba from '../rgba';
 
 type DataByCategory = {
   name: string
@@ -38,19 +38,36 @@ const BODY_BBOX = new Boundary(
   CONTAINER_BBOX.height - X_AXIS_HEIGHT - LEGEND_HEIGHT - 20 - 20,
 );
 
+function getUniqueId() {
+  // const date = new Date();
+  return `${new Date().getTime()}-${Math.floor(Math.random() * 10000)}`
+}
+
 type ChartData = {
   category: string
   data: DataByCategory[]
 }
+type ColumnChartSvgConstructorProps = {
+  selector: string
+  series: Serie[]
+  categories?: string[]
+  range?: [string, string]
+}
 
 class ColumnChartSvg {
+  private _id: string
+  private _deleted = false
+
   private _categories: string[]
   private _source: Serie[]
   private _data: ChartData[]
+  private _range: [string, string]
 
+  private _clipId: string
   private _d3: {
     svg: d3.Selection<d3.BaseType, unknown, HTMLElement, any>
-    xScale: d3.ScaleBand<string>
+    // xScale: d3.ScaleBand<string>
+    xScale: d3.ScaleLinear<number, number, never>
     yScale: d3.ScaleLinear<number, number, never>
     columns: d3Selection
     legend: d3Selection
@@ -64,11 +81,15 @@ class ColumnChartSvg {
     data: ChartData
   }
 
-  constructor(
-    selector: string,
-    series: Serie[],
-    categories?: string[],
-  ) {
+  constructor({
+    selector,
+    series,
+    categories,
+    range,
+  }: ColumnChartSvgConstructorProps) {
+    this._id = getUniqueId()
+    console.log(this._id, '>>> constructor')
+
     this._categories = categories || series[0].data.map((_,i) => `${i}`);
     this._source = series;
     this._data = this._source.reduce((acc, serie, i) => {
@@ -85,13 +106,13 @@ class ColumnChartSvg {
       return acc;
     }, [] as ChartData[]);
 
-    console.log('this._data', this._data)
+    this._range = range || [this._categories[0], this._categories[this._categories.length - 1]];
 
     this._d3 = {} as ColumnChartSvg['_d3'];
 
     this._d3.svg = d3.select(selector)
       .attr('viewBox', CONTAINER_BBOX.viewBoxString);
-
+    this._d3.svg.selectAll('*').remove();
     
     this.setScales();
     this.appendAxises();
@@ -102,15 +123,26 @@ class ColumnChartSvg {
     this.setEventListeners();
   }
 
-  getActualIndex(index: number) {
+  private getActualIndex(index: number) {
     return index - this._inactive.filter(n => n < index).length;
   }
 
-  setScales() {
-    this._d3.xScale = d3.scaleBand()
-      .domain(this._categories)
+  private getXDomain() {
+    const beginIndex = this._categories.findIndex(cat => cat === this._range[0])
+    const endIndex = this._categories.findIndex(cat => cat === this._range[1])
+    // return this._categories.slice(beginIndex, endIndex + 1);
+    return [beginIndex, endIndex]
+  }
+
+  private setScales() {
+    // this._d3.xScale = d3.scaleBand()
+    //   .domain(this.getXDomain())
+    //   .range([BODY_BBOX.x1, BODY_BBOX.x2])
+    //   .padding(0.05)
+
+    this._d3.xScale = d3.scaleLinear()
+      .domain(this.getXDomain())
       .range([BODY_BBOX.x1, BODY_BBOX.x2])
-      .padding(0.05)
 
     const allData = this._source.reduce((acc, sr, i) => 
       this._inactive.includes(i) ? acc : [...acc, ...sr.data]
@@ -121,7 +153,7 @@ class ColumnChartSvg {
       .range([BODY_BBOX.y2, BODY_BBOX.y1])
   }
 
-  appendAxises() {
+  private appendAxises() {
     const xAxis = d3.axisBottom(this._d3.xScale)
       .tickSizeOuter(0)
     const yAxis = d3.axisLeft(this._d3.yScale)
@@ -138,14 +170,24 @@ class ColumnChartSvg {
       .call(yAxis);
   }
 
-  appendColumns() {
+  private appendColumns() {
+    this._clipId = 'columnChartClipPathId';
+    this._d3.svg.append('clipPath')
+      .attr('id', this._clipId)
+      .append('rect')
+        .attr('x', BODY_BBOX.x)
+        .attr('y', BODY_BBOX.y)
+        .attr('width', BODY_BBOX.width)
+        .attr('height', BODY_BBOX.height);
+
     this._d3.columns = this._d3.svg.append('g')
-      .classed('columns', true);
+      .classed('columns', true)
+      .attr('clip-path', `url(#${this._clipId})`);
 
     this.updateColumns();
   }
 
-  appendLegend() {
+  private appendLegend() {
     this._d3.legend = this._d3.svg.append('g')
       .classed('legend', true)
       .call(g => {
@@ -159,7 +201,7 @@ class ColumnChartSvg {
     this.updateLegend();
   }
 
-  appendTooltip() {
+  private appendTooltip() {
     this._d3.tooltip = this._d3.svg.append('g')
       .classed('tooltip', true)
       .call(g => {
@@ -175,7 +217,7 @@ class ColumnChartSvg {
       })
   }
 
-  updateAxises() {
+  private updateAxises() {
     const xAxis = d3.axisBottom(this._d3.xScale)
       .tickSizeOuter(0)
     const yAxis = d3.axisLeft(this._d3.yScale)
@@ -193,76 +235,125 @@ class ColumnChartSvg {
       .call(yAxis)
   }
 
-  updateColumns() {
+  private updateColumns() {
     const ts = this._d3.svg.transition().duration(750);
-    const columnWidth = this._d3.xScale.bandwidth() / (this._data[0].data.length - this._inactive.length);
+    // const columnWidth = this._d3.xScale.bandwidth() / (this._data[0].data.length - this._inactive.length);
+    const groupWidth = (
+      this._d3.xScale(this._categories.indexOf(this._data[1].category)) -
+      this._d3.xScale(this._categories.indexOf(this._data[0].category))
+    );
+    const columnWidth = (
+      groupWidth / 
+      (this._data[0].data.length - this._inactive.length)
+    );
 
-    this._d3.columns
+    const activeCategories = this.getXDomain();
+
+    const groups = this._d3.columns
       .selectAll('g')
       .data(this._data)
-      .join('g')
-        .selectAll('rect.columnArea')
-        .data([null])
-        .join('rect')
-          .classed('columnArea', true);
-
-    this._d3.columns
-      .selectAll('g')
-      .data(this._data)
-      .join('g')
-        .attr('transform', (dt) =>  `translate(${this._d3.xScale(dt.category)},0)`)
-        .selectAll('rect.columnRect')
-        .data(dt => dt.data)
-        .join(
-          enter => enter.append('rect')
-            .classed('columnRect', true)
-            .attr('fill', (dt) => colors[dt.name as keyof typeof colors])
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('width', columnWidth)
-            .attr('transform', (_,i) => `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(0)})`)
-            .call(enter => enter
-              .transition(ts)
-              .attr('height', dt => this._d3.yScale(0) - this._d3.yScale(dt.value))
-              .attr('transform', (dt,i) => `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(dt.value)})`)
-            ),
-          update => update.call(update => update
-            .transition(ts)
-            .attr('width', (_,i) =>
-              this._inactive.includes(i) ? 0 : columnWidth
-            )
-            .attr('height', (dt,i) =>
-              this._inactive.includes(i) ? 0 : this._d3.yScale(0) - this._d3.yScale(dt.value)
-            )
-            .attr('transform', (dt,i) =>
-              this._inactive.includes(i) ?
-                `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(0)})` :
-                `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(dt.value)})`
-            )
-          ),
-          exit => exit.call(exit =>
-            exit.transition(ts)
-              .attr('height', 0)
-              .attr('transform', (dt,i) => `translate(${columnWidth * i},${this._d3.yScale(0)})`)
-              .remove()
-          )
+      // .join(
+      //   enter => enter.append('g')
+      //     .attr('transform', (dt) => {
+      //       const dx = this._d3.xScale(dt.category);
+      //       return dx ? `translate(${dx},0)` : 0;
+      //     }),
+      //   update => update.call(g => g
+      //     .transition(ts)
+      //     .attr('transform', (dt) => {
+      //       const dx = this._d3.xScale(dt.category);
+      //       return dx ? `translate(${dx},0)` : `translate(${0},0)`;
+      //     })
+      //   ),
+      //   exit => exit.call(g => g
+      //     .transition(ts)
+      //     .attr('transform', (dt) => 'translate(0,0)')
+      //     .remove()
+      //   )
+      // )
+      .join(
+        enter => enter.append('g')
+          .attr('transform', (dt) => {
+            const dx = this._d3.xScale(this._categories.indexOf(dt.category));
+            return dx ? `translate(${dx},0)` : 0;
+          }),
+        update => update.call(g => g
+          .transition(ts)
+          .attr('transform', (dt) => {
+            const dx = this._d3.xScale(this._categories.indexOf(dt.category));
+            return dx ? `translate(${dx},0)` : `translate(${0},0)`;
+          })
+        ),
+        exit => exit.call(g => g
+          .transition(ts)
+          .attr('transform', (dt) => 'translate(0,0)')
+          .remove()
         )
+      )
+        
 
-    this._d3.columns
-      .selectAll('g')
-      .data(this._data)
-      .join('g')
-        .selectAll('rect.columnArea')
-        .data([null])
-        .join('rect')
-          .classed('columnArea', true)
-          .attr('transform', (_, i) => `translate(${0},${BODY_BBOX.y1})`)
-          .attr('width', this._d3.xScale.step())
-          .attr('height', BODY_BBOX.height)
-          .attr('fill', rgba(50,100,200,0))
+    // const outranged = groups.filter(dt => !activeCategories.includes(dt.category))
+    // const ranged = groups.filter(dt => activeCategories.includes(dt.category))
+
+    const ranged = groups;
+
+    ranged
+      .selectAll('rect.columnArea')
+      .data([null])
+      .join('rect')
+        .classed('columnArea', true);
+
+    ranged
+      .selectAll('rect.columnRect')
+      .data(dt => dt.data)
+      .join(
+        enter => enter.append('rect')
+          .classed('columnRect', true)
+          .attr('fill', (dt) => colors[dt.name as keyof typeof colors])
+          .attr('x', 0)
+          .attr('y', 0)
+          .attr('width', columnWidth)
+          .attr('transform', (_,i) => `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(0)})`)
+          .call(g => g && g
+            .transition(ts)
+            .attr('height', dt => this._d3.yScale(0) - this._d3.yScale(dt.value))
+            .attr('transform', (dt,i) => `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(dt.value)})`)
+          ),
+        update => update.call(g => g && g
+          .transition(ts)
+          .attr('width', (_,i) =>
+            this._inactive.includes(i) ? 0 : columnWidth
+          )
+          .attr('height', (dt,i) =>
+            this._inactive.includes(i) ? 0 : this._d3.yScale(0) - this._d3.yScale(dt.value)
+          )
+          .attr('transform', (dt,i) =>
+            this._inactive.includes(i) ?
+              `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(0)})` :
+              `translate(${columnWidth * this.getActualIndex(i)},${this._d3.yScale(dt.value)})`
+          )
+        ),
+        exit => exit.call(g => g && g
+          .transition(ts)
+          .attr('height', 0)
+          .attr('transform', (dt,i) => `translate(${columnWidth * i},${this._d3.yScale(0)})`)
+          .remove()
+        )
+      )
+
+    ranged
+      .selectAll('rect.columnArea')
+      .data([null])
+      .join('rect')
+        .classed('columnArea', true)
+        .attr('transform', (_, i) => `translate(${0},${BODY_BBOX.y1})`)
+        // .attr('width', this._d3.xScale.step())
+        .attr('width', groupWidth)
+        .attr('height', BODY_BBOX.height)
+        .attr('fill', rgba(0,0,0,0))
   }
 
-  updateLegend() {
+  private updateLegend() {
     const legendItems = this._d3.legend.select('g.legendItems');
 
     legendItems
@@ -271,7 +362,6 @@ class ColumnChartSvg {
       .join('g')
         .classed('row', true)
         .attr('cursor', 'pointer')
-        // .attr('transform', (d, i) => `translate(${100 * i},0)`)
         .call(g => {
           g.append('rect')
             .attr('x', 0)
@@ -300,25 +390,30 @@ class ColumnChartSvg {
       .attr('transform', (d, i) => `translate(${LEGEND_ITEM_WIDTH*i},${0})`)
       .attr('id', (d, i) => `legendItemRow${i}`)
 
-    const bbox = (legendItems.node() as SVGGraphicsElement).getBBox();
+    try {
+      // FIXME: hot reloading 과정에서 예외가 터진다.
+      const bbox = (legendItems.node() as SVGGraphicsElement).getBBox();
 
-    const coordX = CONTAINER_BBOX.width / 2 - bbox.width / 2;
-    const coordY = BODY_BBOX.y2 + X_AXIS_HEIGHT;
+      const coordX = CONTAINER_BBOX.width / 2 - bbox.width / 2;
+      const coordY = BODY_BBOX.y2 + X_AXIS_HEIGHT;
 
-    this._d3.legend.select('rect.wrapper')
-      .attr('x', coordX)
-      .attr('y', coordY)
-      .attr('width', bbox.width + LEGEND_ITEM_PADDING * 2)
-      .attr('height', bbox.height + LEGEND_ITEM_PADDING * 2)
-      .attr('fill', 'rgba(255,255,255,0.9)')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 0.5)
+      this._d3.legend.select('rect.wrapper')
+        .attr('x', coordX)
+        .attr('y', coordY)
+        .attr('width', bbox.width + LEGEND_ITEM_PADDING * 2)
+        .attr('height', bbox.height + LEGEND_ITEM_PADDING * 2)
+        .attr('fill', 'rgba(255,255,255,0.9)')
+        .attr('stroke', 'black')
+        .attr('stroke-width', 0.5)
 
-    legendItems
-      .attr('transform', `translate(${coordX + LEGEND_ITEM_PADDING},${coordY + LEGEND_ITEM_PADDING})`)
+      legendItems
+        .attr('transform', `translate(${coordX + LEGEND_ITEM_PADDING},${coordY + LEGEND_ITEM_PADDING})`)
+    } catch(err) {
+      console.error(this._id, err);
+    }
   }
 
-  updateTooltip() {
+  private updateTooltip() {
     if(!this._overed) {
       this._d3.tooltip.style('display', 'none');
       return;
@@ -378,8 +473,6 @@ class ColumnChartSvg {
       .attr('fill', rgba(255,255,255,0.9))
       .attr('transform', `translate(${contentBBox.x - padding}, ${contentBBox.y - padding})`)
 
-    const containerBBox = (this._d3.tooltip.node() as SVGGraphicsElement).getBBox();
-
     let x = dx;
     if(x < BODY_BBOX.x1) {
       x = BODY_BBOX.x1;
@@ -400,7 +493,7 @@ class ColumnChartSvg {
       .attr('transform', `translate(${x}, ${y})`)
   }
 
-  toggleSeries(index: number){
+  private toggleSeries(index: number){
     if(this._inactive.includes(index)) {
       this._inactive.splice(
         this._inactive.indexOf(index),
@@ -416,7 +509,7 @@ class ColumnChartSvg {
     this.updateLegend();
   }
 
-  setEventListeners() {
+  private setEventListeners() {
     const _this = this;
     this._d3.legend.select('g.legendItems')
       .selectAll('g.row')
@@ -431,7 +524,7 @@ class ColumnChartSvg {
       .on('mousemove', function(event) {
         const group = d3.select(event.target.parentNode);
         const [ dx, dy ] = d3.pointer(event);
-        group.selectAll('rect.columnRect').attr('stroke', '#000');
+        // group.selectAll('rect.columnRect').attr('stroke', '#000');
 
         _this._overed = {
           dx: dx,
@@ -447,6 +540,33 @@ class ColumnChartSvg {
         _this._overed = undefined;
         _this.updateTooltip();
       })
+  }
+
+  setXRange(range: [string, string]) {
+    console.log(this._id, '>>> setXRange')
+    if(this._deleted) {
+      return;
+    }
+
+    this._range = range;
+
+    this.setScales();
+    this.updateAxises();
+    this.updateColumns();
+    this.updateLegend();
+  }
+
+  clear() {
+    console.log(this._id, '>>> clear')
+    if(this._deleted) {
+      return;
+    }
+
+    this._deleted = true;
+    this._d3.svg.remove();
+    this._d3.columns.remove();
+    this._d3.legend.remove();
+    this._d3.tooltip.remove();
   }
 }
 
